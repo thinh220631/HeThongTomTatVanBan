@@ -110,12 +110,52 @@ if btn_run:
             # 3. Hiển thị kết quả
             st.markdown("---")
             st.subheader("📄 Kết quả tóm tắt:")
+            
+            # Khung hiển thị kết quả
             st.success(result)
             
             # Thống kê nhanh
             word_count = len(result.split())
             st.info(f"📊 Độ dài bản tóm tắt: **{word_count} từ**.")
 
+            # ==========================================
+            # 4. TÍNH NĂNG XUẤT FILE (DOWNLOAD)
+            # ==========================================
+            st.markdown("### 📥 Xuất kết quả")
+            
+            # Tạo 2 cột để đặt 2 nút tải xuống nằm ngang nhau cho đẹp
+            col_txt, col_word, _ = st.columns([1, 1, 2])
+            
+            # --- NÚT 1: Tải file .TXT ---
+            with col_txt:
+                st.download_button(
+                    label="📄 Tải file Text (.txt)",
+                    data=result,
+                    file_name="Ket_qua_tom_tat.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
+                
+            # --- NÚT 2: Tải file Word (.DOCX) ---
+            with col_word:
+                # Khởi tạo file Word ảo trong bộ nhớ
+                doc_result = docx.Document()
+                doc_result.add_heading('Bản Tóm Tắt Tự Động (AI Summarizer)', level=1)
+                doc_result.add_paragraph(result)
+                
+                # Lưu file Word vào bộ nhớ RAM (BytesIO) để tải xuống
+                bio = BytesIO()
+                doc_result.save(bio)
+                bio.seek(0)
+                
+                st.download_button(
+                    label="📘 Tải file Word (.docx)",
+                    data=bio,
+                    file_name="Ket_qua_tom_tat.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
+
 # Chân trang
 st.markdown("---")
-st.caption("Đồ án tốt nghiệp - Hệ thống tóm tắt văn bản tự động - 2024")
+st.caption("Hệ thống tóm tắt văn bản tự động - 2026")
