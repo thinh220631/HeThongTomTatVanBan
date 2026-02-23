@@ -53,7 +53,7 @@ st.markdown("Hệ thống hỗ trợ tóm tắt đa định dạng, cho phép t�
 
 # --- THANH ĐIỀU KHIỂN BÊN TRÁI (SIDEBAR) ---
 st.sidebar.header("⚙️ Cấu hình tóm tắt")
-summary_length = st.sidebar.slider("Độ dài tóm tắt mong muốn (số từ):", 30, 300, 100, help="AI sẽ cố gắng tóm tắt sát với số lượng từ này nhất.")
+summary_length = st.sidebar.slider("Độ dài tóm tắt mong muốn (số từ):", 30, 1000, 100, help="AI sẽ cố gắng tóm tắt sát với số lượng từ này nhất.")
 method = st.sidebar.selectbox(
     "Chọn phương thức tóm tắt:", 
     ["Thông minh (AI T5 - Viết lại câu)", "Trích xuất ý chính (TextRank - Giữ nguyên câu)"]
@@ -113,6 +113,15 @@ if btn_run:
             
             # Khung hiển thị kết quả
             st.success(result)
+            
+            # ==========================================
+            # TRÍCH XUẤT TỪ KHÓA HIỂN THỊ
+            # ==========================================
+            keywords = textrank_summarizer.extract_keywords(cleaned_text, num_keywords=5)
+            if keywords:
+                # Tạo các tag từ khóa đẹp mắt bằng Markdown
+                tags_html = " ".join([f"`#{kw.capitalize()}`" for kw in keywords])
+                st.markdown(f"**🔑 Từ khóa chính:** {tags_html}")
             
             # Thống kê nhanh
             word_count = len(result.split())
