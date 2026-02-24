@@ -1,6 +1,7 @@
 import streamlit as st
 import PyPDF2
 import docx
+import time  # <-- THÊM THƯ VIỆN ĐO THỜI GIAN
 from io import BytesIO
 from summarizer_ai import TextSummarizer
 from textrank_summarizer import TextRankSummarizer
@@ -11,7 +12,6 @@ from text_cleaner import TextPreprocessor
 # ==========================================
 st.set_page_config(page_title="AI Summarizer Pro", page_icon="📝", layout="wide")
 
-# Hàm load model để lưu vào bộ nhớ cache (tránh load lại gây chậm)
 @st.cache_resource
 def load_models():
     return TextSummarizer(), TextRankSummarizer(), TextPreprocessor()
@@ -71,7 +71,6 @@ st.sidebar.info("""
 st.subheader("📥 Dữ liệu đầu vào")
 uploaded_file = st.file_uploader("📂 Tải lên tài liệu (Hỗ trợ: PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
 
-# Xử lý tự động đổ dữ liệu từ file vào khung nhập liệu
 input_content = ""
 if uploaded_file is not None:
     with st.spinner("Đang trích xuất dữ liệu từ file..."):
@@ -96,46 +95,53 @@ if btn_run:
         st.warning("⚠️ Văn bản quá ngắn (dưới 50 ký tự) để thực hiện tóm tắt chất lượng.")
     else:
         with st.spinner("🤖 AI đang đọc và phân tích văn bản..."):
-            # 1. Làm sạch văn bản (Giữ lại dấu câu quan trọng)
+            
+            # --- BẮT ĐẦU ĐO THỜI GIAN ---
+            start_time = time.time()
+            
             cleaned_text = text_cleaner.clean_text(input_text)
             
-            # 2. Thực hiện tóm tắt theo phương thức đã chọn
             if method == "Thông minh (AI T5 - Viết lại câu)":
                 result = ai_summarizer.summarize(cleaned_text, max_len=summary_length)
             else:
-                # Tính toán số câu dựa trên số từ (Trung bình 20 từ/câu)
                 num_sentences = max(1, summary_length // 20)
                 result = textrank_summarizer.summarize(cleaned_text, num_sentences=num_sentences)
             
-            # 3. Hiển thị kết quả
+            # --- KẾT THÚC ĐO THỜI GIAN ---
+            end_time = time.time()
+            processing_time = round(end_time - start_time, 2)
+            
+            # TÍNH TOÁN TỶ LỆ NÉN
+            original_word_count = len(cleaned_text.split())
+            summary_word_count = len(result.split())
+            if original_word_count > 0:
+                compression_ratio = round((summary_word_count / original_word_count) * 100, 1)
+            else:
+                compression_ratio = 0
+            
+            # --- HIỂN THỊ KẾT QUẢ ---
             st.markdown("---")
             st.subheader("📄 Kết quả tóm tắt:")
-            
-            # Khung hiển thị kết quả
             st.success(result)
             
-            # ==========================================
-            # TRÍCH XUẤT TỪ KHÓA HIỂN THỊ
-            # ==========================================
             keywords = textrank_summarizer.extract_keywords(cleaned_text, num_keywords=5)
             if keywords:
-                # Tạo các tag từ khóa đẹp mắt bằng Markdown
                 tags_html = " ".join([f"`#{kw.capitalize()}`" for kw in keywords])
                 st.markdown(f"**🔑 Từ khóa chính:** {tags_html}")
             
-            # Thống kê nhanh
-            word_count = len(result.split())
-            st.info(f"📊 Độ dài bản tóm tắt: **{word_count} từ**.")
+            # ==========================================
+            # BẢNG THÔNG SỐ SO SÁNH (MỚI)
+            # ==========================================
+            st.markdown("### 📊 Thông số hiệu năng")
+            metric_col1, metric_col2, metric_col3 = st.columns(3)
+            metric_col1.metric(label="⏱️ Thời gian xử lý", value=f"{processing_time} giây")
+            metric_col2.metric(label="📉 Tỷ lệ nén", value=f"{compression_ratio}%")
+            metric_col3.metric(label="📝 Độ dài (Tóm tắt / Gốc)", value=f"{summary_word_count} / {original_word_count} từ")
 
-            # ==========================================
-            # 4. TÍNH NĂNG XUẤT FILE (DOWNLOAD)
-            # ==========================================
+            # --- TÍNH NĂNG XUẤT FILE ---
             st.markdown("### 📥 Xuất kết quả")
-            
-            # Tạo 2 cột để đặt 2 nút tải xuống nằm ngang nhau cho đẹp
             col_txt, col_word, _ = st.columns([1, 1, 2])
             
-            # --- NÚT 1: Tải file .TXT ---
             with col_txt:
                 st.download_button(
                     label="📄 Tải file Text (.txt)",
@@ -144,19 +150,13 @@ if btn_run:
                     mime="text/plain",
                     use_container_width=True
                 )
-                
-            # --- NÚT 2: Tải file Word (.DOCX) ---
             with col_word:
-                # Khởi tạo file Word ảo trong bộ nhớ
                 doc_result = docx.Document()
                 doc_result.add_heading('Bản Tóm Tắt Tự Động (AI Summarizer)', level=1)
                 doc_result.add_paragraph(result)
-                
-                # Lưu file Word vào bộ nhớ RAM (BytesIO) để tải xuống
                 bio = BytesIO()
                 doc_result.save(bio)
                 bio.seek(0)
-                
                 st.download_button(
                     label="📘 Tải file Word (.docx)",
                     data=bio,
@@ -165,6 +165,5 @@ if btn_run:
                     use_container_width=True
                 )
 
-# Chân trang
 st.markdown("---")
-st.caption("Hệ thống tóm tắt văn bản tự động - 2026")
+st.caption("Hệ thống tóm tắt văn bản tự động - Nghiên cứu so sánh AI")
