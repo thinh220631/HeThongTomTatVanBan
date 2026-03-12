@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .DS_Store
 .streamlit/
+api_keys.py
+history.db

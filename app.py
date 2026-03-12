@@ -1,169 +1,228 @@
 import streamlit as st
 import PyPDF2
 import docx
-import time  # <-- THÊM THƯ VIỆN ĐO THỜI GIAN
+import time
+import pandas as pd
 from io import BytesIO
+from rouge_score import rouge_scorer # <-- [MỚI] Thư viện tính điểm học thuật
+import plotly.express as px
+
+# --- IMPORT CÁC MODULE XỬ LÝ ---
 from summarizer_ai import TextSummarizer
 from textrank_summarizer import TextRankSummarizer
 from text_cleaner import TextPreprocessor
+from groq_summarizer import GroqSummarizer
+from cohere_summarizer import CohereSummarizer
+import database 
+import api_keys 
 
-# ==========================================
-# 1. CẤU HÌNH TRANG VÀ GIAO DIỆN
-# ==========================================
 st.set_page_config(page_title="AI Summarizer Pro", page_icon="📝", layout="wide")
+database.init_db()
 
 @st.cache_resource
 def load_models():
-    return TextSummarizer(), TextRankSummarizer(), TextPreprocessor()
+    return (
+        TextSummarizer(), TextRankSummarizer(), TextPreprocessor(), 
+        GroqSummarizer(api_keys.GROQ_KEY), CohereSummarizer(api_keys.COHERE_KEY)
+    )
 
-ai_summarizer, textrank_summarizer, text_cleaner = load_models()
+(ai_summarizer, textrank_summarizer, text_cleaner, groq_summarizer, cohere_summarizer) = load_models()
 
 # ==========================================
-# 2. HÀM XỬ LÝ TRÍCH XUẤT VĂN BẢN
+# HÀM TÍNH TOÁN CÁC ĐỘ ĐO (METRICS)
 # ==========================================
+def calc_novelty(original_text, summary_text):
+    """Tính tỷ lệ phần trăm từ vựng mới được AI tạo ra (Độ sáng tạo)"""
+    orig_set = set(original_text.lower().split())
+    summ_set = set(summary_text.lower().split())
+    if not summ_set: return 0.0
+    new_words = summ_set - orig_set
+    return round((len(new_words) / len(summ_set)) * 100, 1)
+
+def calc_rouge_l(reference_text, summary_text):
+    """Tính điểm ROUGE-L (Mức độ hành văn giống với con người)"""
+    if not reference_text.strip(): return 0.0
+    scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=False)
+    scores = scorer.score(reference_text, summary_text)
+    return round(scores['rougeL'].fmeasure * 100, 1)
+
 def extract_text_from_file(uploaded_file):
-    """Đọc nội dung từ file TXT, PDF hoặc DOCX"""
     try:
         filename = uploaded_file.name
-        if filename.endswith('.txt'):
-            return uploaded_file.getvalue().decode("utf-8")
-        
+        if filename.endswith('.txt'): return uploaded_file.getvalue().decode("utf-8")
         elif filename.endswith('.pdf'):
             pdf_reader = PyPDF2.PdfReader(BytesIO(uploaded_file.read()))
-            text = ""
-            for page in pdf_reader.pages:
-                content = page.extract_text()
-                if content:
-                    text += content + "\n"
-            return text
-        
+            return "".join([page.extract_text() + "\n" for page in pdf_reader.pages if page.extract_text()])
         elif filename.endswith('.docx'):
             doc = docx.Document(BytesIO(uploaded_file.read()))
             return "\n".join([para.text for para in doc.paragraphs])
     except Exception as e:
-        st.error(f"Lỗi khi đọc file: {e}")
-        return ""
+        st.error(f"Lỗi đọc file: {e}")
     return ""
 
 # ==========================================
-# 3. GIAO DIỆN NGƯỜI DÙNG (UI)
+# GIAO DIỆN CHÍNH
 # ==========================================
-st.title("📝 Hệ thống Tóm tắt Văn bản Thông minh")
-st.markdown("Hệ thống hỗ trợ tóm tắt đa định dạng, cho phép tùy chỉnh độ dài văn bản theo nhu cầu người đọc.")
+st.title("📝 Hệ thống Tóm tắt & Nghiên cứu Đánh giá AI")
+st.markdown("Đồ án chuyên sâu: Phân tích hiệu năng, đo lường độ sáng tạo (Novelty) và điểm chuẩn ROUGE giữa các thuật toán.")
 
-# --- THANH ĐIỀU KHIỂN BÊN TRÁI (SIDEBAR) ---
-st.sidebar.header("⚙️ Cấu hình tóm tắt")
-summary_length = st.sidebar.slider("Độ dài tóm tắt mong muốn (số từ):", 30, 1000, 100, help="AI sẽ cố gắng tóm tắt sát với số lượng từ này nhất.")
-method = st.sidebar.selectbox(
-    "Chọn phương thức tóm tắt:", 
-    ["Thông minh (AI T5 - Viết lại câu)", "Trích xuất ý chính (TextRank - Giữ nguyên câu)"]
-)
+st.sidebar.header("⚙️ Cấu hình chung")
+summary_length = st.sidebar.slider("Độ dài tóm tắt mong muốn (số từ):", 30, 1000, 100)
 
-st.sidebar.markdown("---")
-st.sidebar.info("""
-**Hướng dẫn:**
-1. Tải file tài liệu hoặc dán văn bản.
-2. Chọn độ dài và phương thức.
-3. Nhấn nút 'Tiến hành Tóm tắt'.
-""")
-
-# --- KHU VỰC NHẬP DỮ LIỆU ---
 st.subheader("📥 Dữ liệu đầu vào")
-uploaded_file = st.file_uploader("📂 Tải lên tài liệu (Hỗ trợ: PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+uploaded_file = st.file_uploader("📂 Tải lên tài liệu (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+input_content = extract_text_from_file(uploaded_file) if uploaded_file else ""
 
-input_content = ""
-if uploaded_file is not None:
-    with st.spinner("Đang trích xuất dữ liệu từ file..."):
-        input_content = extract_text_from_file(uploaded_file)
-        if input_content:
-            st.success(f"✅ Đã nhận diện nội dung từ file: {uploaded_file.name}")
+c_input, c_ref = st.columns(2)
+with c_input:
+    input_text = st.text_area("Nội dung văn bản cần xử lý (Bắt buộc):", value=input_content, height=200)
+with c_ref:
+    reference_text = st.text_area("Bản tóm tắt chuẩn của con người (Tùy chọn - Dùng để tính điểm ROUGE):", height=200, placeholder="Nhập bản tóm tắt mẫu vào đây để AI so sánh độ chính xác...")
 
-input_text = st.text_area(
-    "Nội dung văn bản cần xử lý:", 
-    value=input_content, 
-    height=300, 
-    placeholder="Nhập hoặc dán văn bản của bạn tại đây..."
-)
+cleaned_text = text_cleaner.clean_text(input_text)
+original_word_count = len(cleaned_text.split())
 
-# --- NÚT BẤM VÀ LOGIC XỬ LÝ ---
-col1, col2 = st.columns([1, 4])
-with col1:
-    btn_run = st.button("🚀 Tiến hành Tóm tắt", type="primary")
+tab1, tab2, tab3 = st.tabs(["📝 Tóm tắt Đơn", "⚖️ So sánh Đa mô hình", "📊 Dashboard & Lịch sử DB"])
 
-if btn_run:
-    if len(input_text.strip()) < 50:
-        st.warning("⚠️ Văn bản quá ngắn (dưới 50 ký tự) để thực hiện tóm tắt chất lượng.")
+# ---------------------------------------------------------
+# TAB 1: TÓM TẮT ĐƠN
+# ---------------------------------------------------------
+with tab1:
+    method = st.selectbox("Chọn mô hình AI:", [
+        "Thông minh (AI T5 - Viết lại câu)", "Trích xuất ý chính (TextRank)",
+        "⚡ Siêu tốc độ (Groq Llama 3 API)", "🌟 Tóm tắt chuyên sâu (Cohere API)"
+    ])
+    
+    if st.button("🚀 Chạy Mô hình Đơn", type="primary"):
+        if original_word_count < 20: st.warning("⚠️ Văn bản quá ngắn.")
+        else:
+            with st.spinner(f"🤖 Đang xử lý bằng {method}..."):
+                start_time = time.time()
+                try:
+                    if "T5" in method: result = ai_summarizer.summarize(cleaned_text, max_len=summary_length)
+                    elif "Groq" in method: result = groq_summarizer.summarize(cleaned_text, max_words=summary_length)
+                    elif "Cohere" in method: result = cohere_summarizer.summarize(cleaned_text, max_words=summary_length)
+                    else: result = textrank_summarizer.summarize(cleaned_text, num_sentences=max(1, summary_length // 20))
+                    
+                    p_time = round(time.time() - start_time, 2)
+                    sum_count = len(result.split())
+                    novelty = calc_novelty(cleaned_text, result)
+                    rouge = calc_rouge_l(reference_text, result)
+                    
+                    st.success(result)
+                    if not result.startswith("⚠️"):
+                        database.save_summary(method, original_word_count, sum_count, p_time, cleaned_text, result, novelty, rouge)
+                    
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("⏱️ Thời gian", f"{p_time}s")
+                    m2.metric("📉 Tỷ lệ nén", f"{round((sum_count/original_word_count)*100, 1)}%")
+                    m3.metric("🧠 Độ sáng tạo (Novelty)", f"{novelty}%")
+                    m4.metric("🎯 Điểm ROUGE-L", f"{rouge}%" if reference_text else "N/A")
+                except Exception as e:
+                    st.error(f"Lỗi: {e}")
+
+# ---------------------------------------------------------
+# TAB 2: SO SÁNH ĐA MÔ HÌNH
+# ---------------------------------------------------------
+with tab2:
+    st.info("Chế độ này sẽ gửi văn bản đến 4 AI cùng lúc. Kèm theo chấm điểm Novelty (Tỷ lệ sinh từ mới) và ROUGE-L.")
+    if st.button("⚖️ Bắt đầu Đại chiến AI (Chạy tất cả)", type="primary"):
+        if original_word_count < 20: st.warning("⚠️ Văn bản quá ngắn.")
+        else:
+            col1, col2 = st.columns(2)
+            col3, col4 = st.columns(2)
+            
+            def render_result(col, title, res, time_taken, method_name):
+                with col:
+                    st.markdown(f"### {title}")
+                    st.write(res)
+                    if not res.startswith("⚠️"):
+                        sum_cnt = len(res.split())
+                        nov = calc_novelty(cleaned_text, res)
+                        rg = calc_rouge_l(reference_text, res)
+                        st.caption(f"⏱️ {time_taken}s | 📝 {sum_cnt} từ | 🧠 Novelty: {nov}% | 🎯 ROUGE: {rg if reference_text else 'N/A'}")
+                        database.save_summary(method_name, original_word_count, sum_cnt, time_taken, cleaned_text, res, nov, rg)
+
+            # 1. Llama 3 (Groq)
+            start_t = time.time()
+            res_groq = groq_summarizer.summarize(cleaned_text, max_words=summary_length)
+            render_result(col1, "⚡ Groq (Llama 3)", res_groq, round(time.time() - start_t, 2), "⚡ Siêu tốc độ (Groq Llama 3 API)")
+            
+            # 2. Cohere
+            start_t = time.time()
+            res_co = cohere_summarizer.summarize(cleaned_text, max_words=summary_length)
+            render_result(col2, "🌟 Cohere API", res_co, round(time.time() - start_t, 2), "🌟 Tóm tắt chuyên sâu (Cohere API)")
+            
+            # 3. T5 Local
+            start_t = time.time()
+            res_t5 = ai_summarizer.summarize(cleaned_text, max_len=summary_length)
+            render_result(col3, "🧠 AI T5 (Offline)", res_t5, round(time.time() - start_t, 2), "Thông minh (AI T5 - Viết lại câu)")
+                
+            # 4. TextRank
+            start_t = time.time()
+            res_tr = textrank_summarizer.summarize(cleaned_text, num_sentences=max(1, summary_length // 20))
+            render_result(col4, "✂️ TextRank", res_tr, round(time.time() - start_t, 2), "Trích xuất ý chính (TextRank)")
+
+# ---------------------------------------------------------
+# TAB 3: THỐNG KÊ & BIỂU ĐỒ
+# ---------------------------------------------------------
+with tab3:
+    history_data = database.get_history()
+    if len(history_data) == 0:
+        st.write("Chưa có dữ liệu. Hãy chạy tóm tắt vài lần để xem biểu đồ!")
     else:
-        with st.spinner("🤖 AI đang đọc và phân tích văn bản..."):
+        df = pd.DataFrame(history_data, columns=["ID", "Thời gian", "Phương pháp", "Từ (Gốc)", "Từ (Tóm tắt)", "Thời gian xử lý (s)", "Văn bản gốc", "Kết quả", "Novelty (%)", "ROUGE-L (%)"])
+        
+        def shorten_name(name):
+            if "T5" in name: return "AI T5 (Local)"
+            if "TextRank" in name: return "TextRank"
+            if "Groq" in name: return "Groq Llama 3"
+            if "Cohere" in name: return "Cohere"
+            return name
             
-            # --- BẮT ĐẦU ĐO THỜI GIAN ---
-            start_time = time.time()
+        df["Tên rút gọn"] = df["Phương pháp"].apply(shorten_name)
+        df["Tỷ lệ nén (%)"] = (df["Từ (Tóm tắt)"] / df["Từ (Gốc)"]) * 100
+        
+        st.subheader("📈 Phân tích Các Chỉ Số Học Thuật")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**1. Tốc độ xử lý (giây)**")
+            # THÊM CHÚ THÍCH GIẢI THÍCH BIỂU ĐỒ TỐC ĐỘ
+            st.caption("⏳ Cột càng **THẤP** (thời gian ngắn) chứng tỏ AI chạy càng nhanh. Cột cao thể hiện độ trễ lớn, cần nhiều thời gian chờ đợi.")
+            fig1 = px.bar(df.groupby("Tên rút gọn")["Thời gian xử lý (s)"].mean().reset_index(), x="Tên rút gọn", y="Thời gian xử lý (s)", text_auto='.2f', color="Tên rút gọn")
+            fig1.update_layout(showlegend=False, xaxis_title="")
+            st.plotly_chart(fig1, use_container_width=True)
             
-            cleaned_text = text_cleaner.clean_text(input_text)
-            
-            if method == "Thông minh (AI T5 - Viết lại câu)":
-                result = ai_summarizer.summarize(cleaned_text, max_len=summary_length)
-            else:
-                num_sentences = max(1, summary_length // 20)
-                result = textrank_summarizer.summarize(cleaned_text, num_sentences=num_sentences)
-            
-            # --- KẾT THÚC ĐO THỜI GIAN ---
-            end_time = time.time()
-            processing_time = round(end_time - start_time, 2)
-            
-            # TÍNH TOÁN TỶ LỆ NÉN
-            original_word_count = len(cleaned_text.split())
-            summary_word_count = len(result.split())
-            if original_word_count > 0:
-                compression_ratio = round((summary_word_count / original_word_count) * 100, 1)
-            else:
-                compression_ratio = 0
-            
-            # --- HIỂN THỊ KẾT QUẢ ---
-            st.markdown("---")
-            st.subheader("📄 Kết quả tóm tắt:")
-            st.success(result)
-            
-            keywords = textrank_summarizer.extract_keywords(cleaned_text, num_keywords=5)
-            if keywords:
-                tags_html = " ".join([f"`#{kw.capitalize()}`" for kw in keywords])
-                st.markdown(f"**🔑 Từ khóa chính:** {tags_html}")
-            
-            # ==========================================
-            # BẢNG THÔNG SỐ SO SÁNH (MỚI)
-            # ==========================================
-            st.markdown("### 📊 Thông số hiệu năng")
-            metric_col1, metric_col2, metric_col3 = st.columns(3)
-            metric_col1.metric(label="⏱️ Thời gian xử lý", value=f"{processing_time} giây")
-            metric_col2.metric(label="📉 Tỷ lệ nén", value=f"{compression_ratio}%")
-            metric_col3.metric(label="📝 Độ dài (Tóm tắt / Gốc)", value=f"{summary_word_count} / {original_word_count} từ")
+        with c2:
+            st.markdown("**2. Độ Sáng tạo - Novelty (%)**")
+            # THÊM CHÚ THÍCH GIẢI THÍCH BIỂU ĐỒ NOVELTY
+            st.caption("🧠 Cột càng **CAO** chứng tỏ AI có khả năng dùng từ vựng mới để viết lại câu (Paraphrase) càng tốt. TextRank luôn = 0 vì thuật toán này chỉ copy-paste câu gốc.")
+            fig2 = px.bar(df.groupby("Tên rút gọn")["Novelty (%)"].mean().reset_index(), x="Tên rút gọn", y="Novelty (%)", text_auto='.1f', color="Tên rút gọn")
+            fig2.update_layout(showlegend=False, xaxis_title="")
+            st.plotly_chart(fig2, use_container_width=True)
 
-            # --- TÍNH NĂNG XUẤT FILE ---
-            st.markdown("### 📥 Xuất kết quả")
-            col_txt, col_word, _ = st.columns([1, 1, 2])
+        st.markdown("---")
+        c3, c4 = st.columns([2, 1])
+        with c3:
+            st.markdown("**3. Điểm Chuẩn ROUGE-L (%)**")
+            # THÊM CHÚ THÍCH GIẢI THÍCH BIỂU ĐỒ ROUGE
+            st.caption("🎯 Thanh càng **DÀI** (tỉ lệ cao) chứng tỏ cách hành văn của AI càng sát với bản tóm tắt chuẩn của con người. (Chỉ vẽ biểu đồ khi bạn có nhập Bản tóm tắt mẫu).")
+            df_rouge = df[df["ROUGE-L (%)"] > 0]
+            if not df_rouge.empty:
+                fig3 = px.bar(df_rouge.groupby("Tên rút gọn")["ROUGE-L (%)"].mean().reset_index(), y="Tên rút gọn", x="ROUGE-L (%)", orientation='h', text_auto='.1f', color="Tên rút gọn")
+                fig3.update_layout(showlegend=False, yaxis_title="")
+                st.plotly_chart(fig3, use_container_width=True)
+            else:
+                st.info("💡 Bạn chưa nhập 'Bản tóm tắt chuẩn' lần nào nên chưa có biểu đồ ROUGE.")
+                
+        with c4:
+            st.markdown("**4. Tỷ lệ nén văn bản (%)**")
+            # THÊM CHÚ THÍCH GIẢI THÍCH TỶ LỆ NÉN
+            st.caption("📦 Phần trăm số từ của bản tóm tắt so với bản gốc. Miếng bánh **NHỎ** nghĩa là AI tóm tắt siêu ngắn gọn. Miếng bánh **TO** là AI giữ lại nhiều chi tiết.")
+            fig4 = px.pie(df.groupby("Tên rút gọn")["Tỷ lệ nén (%)"].mean().reset_index(), values="Tỷ lệ nén (%)", names="Tên rút gọn", hole=0.4)
+            st.plotly_chart(fig4, use_container_width=True)
             
-            with col_txt:
-                st.download_button(
-                    label="📄 Tải file Text (.txt)",
-                    data=result,
-                    file_name="Ket_qua_tom_tat.txt",
-                    mime="text/plain",
-                    use_container_width=True
-                )
-            with col_word:
-                doc_result = docx.Document()
-                doc_result.add_heading('Bản Tóm Tắt Tự Động (AI Summarizer)', level=1)
-                doc_result.add_paragraph(result)
-                bio = BytesIO()
-                doc_result.save(bio)
-                bio.seek(0)
-                st.download_button(
-                    label="📘 Tải file Word (.docx)",
-                    data=bio,
-                    file_name="Ket_qua_tom_tat.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True
-                )
-
-st.markdown("---")
-st.caption("Hệ thống tóm tắt văn bản tự động - Nghiên cứu so sánh AI")
+        st.markdown("---")
+        st.subheader("📚 Bảng dữ liệu SQLite (Đã lưu điểm học thuật)")
+        st.dataframe(df.drop(columns=["Văn bản gốc", "Kết quả", "Tên rút gọn", "Tỷ lệ nén (%)"], errors='ignore'), use_container_width=True)
