@@ -1,54 +1,64 @@
-# 📝 Hệ thống Tóm tắt Văn bản Thông minh (AI Summarizer Pro)
+# 📝 Hệ thống Tóm tắt Văn bản Thông minh & Nghiên cứu Đánh giá AI (AI Summarizer Pro)
 
-**AI Summarizer Pro** là một ứng dụng web (Web App) hỗ trợ tóm tắt văn bản tự động dành riêng cho tiếng Việt. Hệ thống cho phép người dùng rút ngắn các tài liệu dài một cách nhanh chóng, chính xác trong khi vẫn giữ nguyên những ý chính cốt lõi, phục vụ hiệu quả cho việc học tập và nghiên cứu.
-
----
-
-## 🚀 Chức năng chính
-
-* **1. Hỗ trợ đa định dạng đầu vào:** Đọc và trích xuất nội dung tự động từ văn bản thuần túy hoặc các file tài liệu phổ biến như `PDF`, `DOCX` (Word), và `TXT`.
-* **2. Hai chế độ tóm tắt linh hoạt:**
-    * 🤖 **Tóm tắt thông minh (Abstractive Summarization):** Sử dụng mô hình Deep Learning (AI T5 của NlpHUST) để "đọc hiểu" và tự động viết lại đoạn văn ngắn gọn, logic, văn phong tự nhiên.
-    * 📊 **Trích xuất ý chính (Extractive Summarization):** Sử dụng thuật toán TextRank và TF-IDF để chấm điểm và trích xuất giữ nguyên các câu mang thông tin quan trọng nhất của văn bản gốc.
-* **3. Tùy chỉnh độ dài:** Người dùng có thể sử dụng thanh trượt (slider) để định hướng độ dài bản tóm tắt mong muốn (từ 30 đến 300 từ).
-* **4. Trích xuất từ khóa (Keyword Extraction):** Tự động phân tích và hiển thị Top 5 từ khóa cốt lõi nhất của đoạn văn dưới dạng các thẻ (tags) trực quan.
-* **5. Xuất và lưu trữ tài liệu:** Cung cấp tính năng tải xuống (Download) kết quả tóm tắt trực tiếp dưới định dạng `.txt` hoặc `.docx` với một cú click chuột.
+**AI Summarizer Pro** là một hệ thống phần mềm tóm tắt văn bản tiếng Việt đa mô hình. Dự án không chỉ dừng lại ở việc cung cấp công cụ tóm tắt, mà còn là một môi trường thực nghiệm để phân tích, so sánh hiệu năng và chất lượng giữa các thuật toán trích xuất truyền thống và các mô hình ngôn ngữ lớn (LLMs) tiên tiến nhất hiện nay.
 
 ---
 
-## 🛠️ Công nghệ sử dụng
+## 🚀 Chức năng nổi bật
 
-Dự án được xây dựng bằng ngôn ngữ **Python** và tích hợp các thư viện mạnh mẽ nhất hiện nay:
-* **Giao diện Web:** `Streamlit` (Nhanh, trực quan, dễ sử dụng).
-* **Xử lý ngôn ngữ tự nhiên (NLP) & AI:**
-    * `Transformers` (HuggingFace) để chạy mô hình **T5-small-vi-summarization**.
-    * `NLTK`, `Scikit-learn`, `NetworkX` để xây dựng thuật toán TextRank & TF-IDF.
-* **Xử lý file tài liệu:** `PyPDF2` (đọc PDF), `python-docx` (đọc & xuất file Word).
+* **📂 Xử lý tài liệu đa định dạng:** Tự động đọc và trích xuất nội dung từ các tệp `PDF`, `DOCX` (Word) và `TXT`.
+* **🧠 Hệ sinh thái đa mô hình AI:**
+    * **TextRank:** Thuật toán trích xuất ý chính dựa trên đồ thị, giữ nguyên câu gốc.
+    * **T5-Small (ViT5):** Mô hình Deep Learning tạo sinh được huấn luyện chuyên biệt cho tiếng Việt.
+    * **Groq Llama 3:** Sử dụng API hiệu năng cao để tóm tắt bằng mô hình Llama 3 với tốc độ cực nhanh.
+    * **Cohere API:** Tận dụng sức mạnh của mô hình ngôn ngữ thương mại để phân tích ngữ nghĩa sâu.
+* **⚖️ Chế độ so sánh song song (Parallel Execution):** Tính năng cho phép chạy đồng thời tất cả các mô hình trên cùng một văn bản đầu vào để đối chiếu kết quả trực quan.
+* **📊 Dashboard đánh giá học thuật:**
+    * **Độ sáng tạo (Novelty Score):** Đo lường tỷ lệ từ vựng mới mà AI tự tạo ra so với bản gốc.
+    * **Điểm ROUGE-L:** Đánh giá độ chính xác của bản tóm tắt dựa trên bản mẫu của con người.
+    * **Phân tích hiệu năng:** Biểu đồ tương tác so sánh thời gian xử lý và tỷ lệ nén của từng phương pháp.
+* **🗄️ Quản lý lịch sử bằng Database:** Tích hợp `SQLite` để lưu trữ mọi phiên làm việc, hỗ trợ tra cứu và thống kê dữ liệu thực nghiệm.
+
+---
+
+## 🛠️ Kiến trúc công nghệ
+
+* **Giao diện:** `Streamlit` (Web Framework), `Plotly` (Biểu đồ tương tác).
+* **Cơ sở dữ liệu:** `SQLite3` (Lưu trữ nội bộ).
+* **Đánh giá học thuật:** `rouge-score` (Google Research metrics).
+* **Xử lý ngôn ngữ:** `Transformers` (HuggingFace), `Groq SDK`, `Cohere SDK`, `NLTK`, `Scikit-learn`.
 
 ---
 
 ## 📂 Cấu trúc dự án
 
-* `app.py`: File chính chứa giao diện Streamlit và logic kết nối các thành phần.
-* `config.py`: Lưu trữ các cấu hình chung (tên mô hình AI, giới hạn từ,...).
-* `summarizer_ai.py`: Class xử lý tóm tắt bằng mô hình AI T5 (Abstractive).
-* `textrank_summarizer.py`: Class xử lý tóm tắt và trích xuất từ khóa bằng TextRank (Extractive).
-* `text_cleaner.py`: Class tiền xử lý, làm sạch văn bản đầu vào.
-* `requirements.txt`: Danh sách các thư viện cần thiết để chạy dự án.
+* `app.py`: Giao diện chính và luồng xử lý tập trung.
+* `database.py`: Quản lý khởi tạo và truy vấn dữ liệu lịch sử.
+* `summarizer_ai.py`: Xử lý mô hình T5 chạy cục bộ.
+* `textrank_summarizer.py`: Xử lý thuật toán TextRank và trích xuất từ khóa.
+* `groq_summarizer.py` & `cohere_summarizer.py`: Các module kết nối API đám mây.
+* `text_cleaner.py`: Tiền xử lý và làm sạch dữ liệu văn bản.
 
 ---
 
-## 💻 Hướng dẫn Cài đặt & Sử dụng (Local)
+## 💻 Hướng dẫn cài đặt
 
-Nếu bạn muốn chạy dự án này trên máy tính cá nhân, hãy làm theo các bước sau:
+1.  **Clone dự án:**
+    ```bash
+    git clone [https://github.com/thinh220631/HeThongTomTatVanBan.git](https://github.com/thinh220631/HeThongTomTatVanBan.git)
+    cd HeThongTomTatVanBan
+    ```
+2.  **Cài đặt thư viện:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  **Cấu hình API Key:**
+    * Đổi tên file `api_keys.example.py` thành `api_keys.py`.
+    * Điền các khóa API lấy từ Groq Cloud và Cohere Dashboard vào file.
+4.  **Khởi chạy:**
+    ```bash
+    streamlit run app.py
+    ```
 
-**Bước 1: Clone dự án về máy**
-```bash
-git clone [https://github.com/thinh220631/HeThongTomTatVanBan.git](https://github.com/thinh220631/HeThongTomTatVanBan.git)
-cd HeThongTomTatVanBan
-**Bước 2: Cài đặt các thư viện cần thiết**
-```bash
-pip install -r requirements.txt
-**Bước 3: Khởi chạy ứng dụng**
-```bash
-streamlit run app.py
+---
+**Đồ án 2 - Hệ thống tóm tắt văn bản thông minh tích hợp AI Cloud & Database.**
