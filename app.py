@@ -6,6 +6,9 @@ import pandas as pd
 from io import BytesIO
 from rouge_score import rouge_scorer # <-- [MỚI] Thư viện tính điểm học thuật
 import plotly.express as px
+import os
+import smtplib
+from email.message import EmailMessage
 
 # --- IMPORT CÁC MODULE XỬ LÝ ---
 from summarizer_ai import TextSummarizer
@@ -26,7 +29,133 @@ def load_models():
         GroqSummarizer(api_keys.GROQ_KEY), CohereSummarizer(api_keys.COHERE_KEY)
     )
 
-(ai_summarizer, textrank_summarizer, text_cleaner, groq_summarizer, cohere_summarizer) = load_models()
+def _ensure_auth_state():
+    if "user" not in st.session_state:
+        st.session_state.user = None
+
+def _mask_email(email: str) -> str:
+    email = (email or "").strip()
+    if "@" not in email:
+        return "***"
+    name, domain = email.split("@", 1)
+    if len(name) <= 2:
+        name_masked = name[:1] + "*"
+    else:
+        name_masked = name[:2] + "*" * (len(name) - 2)
+    return f"{name_masked}@{domain}"
+
+def _send_reset_email(to_email: str, code: str):
+    smtp_user = os.getenv("SMTP_USER", "").strip() or str(st.secrets.get("SMTP_USER", "")).strip()
+    smtp_app_password = os.getenv("SMTP_APP_PASSWORD", "").strip() or str(st.secrets.get("SMTP_APP_PASSWORD", "")).strip()
+    if not smtp_user or not smtp_app_password:
+        return False, "Chưa cấu hình SMTP. Hãy set SMTP_USER/SMTP_APP_PASSWORD (env hoặc .streamlit/secrets.toml)."
+
+    msg = EmailMessage()
+    msg["Subject"] = "AI Summarizer Pro - Ma dat lai mat khau"
+    msg["From"] = smtp_user
+    msg["To"] = to_email
+    msg.set_content(
+        "Ban da yeu cau dat lai mat khau.\n\n"
+        f"Ma xac nhan (OTP): {code}\n"
+        "Ma co hieu luc 10 phut. Neu khong phai ban, hay bo qua email nay.\n"
+    )
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(smtp_user, smtp_app_password)
+            server.send_message(msg)
+        return True, "Da gui ma OTP qua email."
+    except Exception as e:
+        return False, f"Gui email that bai: {e}"
+
+def _render_auth_sidebar():
+    st.sidebar.header("👤 Tài khoản")
+
+    if st.session_state.user:
+        st.sidebar.success(f"Xin chào, {st.session_state.user['username']}")
+        if st.sidebar.button("Đăng xuất"):
+            st.session_state.user = None
+            st.rerun()
+        return True
+
+    tab_login, tab_register, tab_forgot = st.sidebar.tabs(["Đăng nhập", "Đăng ký", "Quên mật khẩu"])
+
+    with tab_login:
+        with st.form("login_form", clear_on_submit=False):
+            username = st.text_input("Username", placeholder="vd: thinh")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Đăng nhập", type="primary")
+        if submitted:
+            ok, user, msg = database.authenticate_user(username, password)
+            if ok:
+                st.session_state.user = user
+                st.sidebar.success(msg)
+                st.rerun()
+            else:
+                st.sidebar.error(msg)
+
+    with tab_register:
+        with st.form("register_form", clear_on_submit=True):
+            username = st.text_input("Username (bắt buộc)")
+            email = st.text_input("Email (tuỳ chọn)", placeholder="name@example.com")
+            password = st.text_input("Password (bắt buộc)", type="password")
+            confirm = st.text_input("Nhập lại password", type="password")
+            submitted = st.form_submit_button("Tạo tài khoản", type="primary")
+        if submitted:
+            if password != confirm:
+                st.sidebar.error("Password nhập lại không khớp.")
+            elif len((password or "")) < 6:
+                st.sidebar.error("Password tối thiểu 6 ký tự.")
+            else:
+                ok, msg = database.create_user(username=username, password=password, email=email)
+                if ok:
+                    st.sidebar.success(msg)
+                else:
+                    st.sidebar.error(msg)
+
+    with tab_forgot:
+        st.caption("Nhập username hoặc email đã đăng ký để nhận mã OTP.")
+        smtp_user_present = bool(os.getenv("SMTP_USER", "").strip() or str(st.secrets.get("SMTP_USER", "")).strip())
+        smtp_pass_present = bool(os.getenv("SMTP_APP_PASSWORD", "").strip() or str(st.secrets.get("SMTP_APP_PASSWORD", "")).strip())
+        if not (smtp_user_present and smtp_pass_present):
+            st.warning("SMTP chưa được cấu hình cho phiên chạy hiện tại.")
+
+        with st.form("forgot_request_form", clear_on_submit=True):
+            identifier = st.text_input("Username hoặc Email")
+            submitted = st.form_submit_button("Gửi mã OTP", type="primary")
+
+        if submitted:
+            ok, email, code_or_msg = database.create_password_reset_code(identifier)
+            if ok:
+                send_ok, send_msg = _send_reset_email(email, code_or_msg)
+                if send_ok:
+                    st.sidebar.success(f"{send_msg} ({_mask_email(email)})")
+                else:
+                    st.sidebar.error(send_msg)
+            else:
+                st.sidebar.info(code_or_msg)
+
+        st.divider()
+        st.caption("Sau khi nhận OTP, nhập mã và mật khẩu mới.")
+
+        with st.form("forgot_reset_form", clear_on_submit=True):
+            identifier2 = st.text_input("Username hoặc Email (để đặt lại)")
+            code = st.text_input("Mã OTP (6 số)")
+            new_password = st.text_input("Mật khẩu mới", type="password")
+            confirm = st.text_input("Nhập lại mật khẩu mới", type="password")
+            submitted2 = st.form_submit_button("Đổi mật khẩu", type="primary")
+
+        if submitted2:
+            if new_password != confirm:
+                st.sidebar.error("Password nhập lại không khớp.")
+            else:
+                ok2, msg2 = database.reset_password_with_code(identifier2, code, new_password)
+                if ok2:
+                    st.sidebar.success(msg2)
+                else:
+                    st.sidebar.error(msg2)
+
+    return False
 
 # ==========================================
 # HÀM TÍNH TOÁN CÁC ĐỘ ĐO (METRICS)
@@ -63,8 +192,17 @@ def extract_text_from_file(uploaded_file):
 # ==========================================
 # GIAO DIỆN CHÍNH
 # ==========================================
+_ensure_auth_state()
+is_authed = _render_auth_sidebar()
+
 st.title("📝 Hệ thống Tóm tắt & Nghiên cứu Đánh giá AI")
 st.markdown("Đồ án chuyên sâu: Phân tích hiệu năng, đo lường độ sáng tạo (Novelty) và điểm chuẩn ROUGE giữa các thuật toán.")
+
+if not is_authed:
+    st.info("Vui lòng đăng nhập hoặc đăng ký ở sidebar để sử dụng hệ thống.")
+    st.stop()
+
+(ai_summarizer, textrank_summarizer, text_cleaner, groq_summarizer, cohere_summarizer) = load_models()
 
 st.sidebar.header("⚙️ Cấu hình chung")
 summary_length = st.sidebar.slider("Độ dài tóm tắt mong muốn (số từ):", 30, 1000, 100)

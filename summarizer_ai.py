@@ -4,27 +4,21 @@ import torch
 
 class TextSummarizer:
     def __init__(self):
-        print("[HỆ THỐNG] Đang khởi tạo AI phiên bản Nâng cao (Chính xác ý)...")
+        # Avoid printing non-ASCII to Windows consoles (cp1252) which can crash Streamlit.
+        # T5 Vietnamese models use SentencePiece (`spiece.model`). Force slow tokenizer to avoid
+        # tiktoken conversion path that can mis-detect and crash on Windows.
+        self.tokenizer = AutoTokenizer.from_pretrained(config.MODEL_NAME, use_fast=False)
         
-        # Tải Tokenizer và Model
-        print(" -> Đang tải Tokenizer...")
-        self.tokenizer = AutoTokenizer.from_pretrained(config.MODEL_NAME)
-        
-        print(" -> Đang tải Model (Hệ thống đang tối ưu hóa bộ nhớ)...")
         self.model = AutoModelForSeq2SeqLM.from_pretrained(config.MODEL_NAME)
         
         # Kiểm tra nếu có GPU (CUDA) thì chuyển model sang GPU để chạy nhanh và chính xác hơn
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
-        
-        print(f"[HỆ THỐNG] Khởi tạo thành công trên thiết bị: {self.device.upper()}\n")
 
     def summarize(self, text, max_len=100):
         """
         Hàm tóm tắt nâng cấp: Đảm bảo thoát ý, không lặp, không cụt câu.
         """
-        print(f"[HỆ THỐNG] Đang phân tích ngữ cảnh để tóm tắt (~{max_len} chữ)...")
-        
         # KỸ THUẬT PROMPT MỚI: Dẫn dắt AI tập trung vào tóm tắt tiếng Việt chất lượng cao
         prompt_text = f"vietnamese summarization: {text}" 
         

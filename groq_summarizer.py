@@ -2,14 +2,11 @@ from groq import Groq
 
 class GroqSummarizer:
     def __init__(self, api_key):
-        print("[HỆ THỐNG] Đang kết nối tới Groq Cloud API...")
         self.client = Groq(api_key=api_key)
         # Sử dụng model Llama 3 mới nhất, rất giỏi tiếng Việt
         self.model = "llama-3.3-70b-versatile" 
 
     def summarize(self, text, max_words=100):
-        print(f"[HỆ THỐNG] Đang gửi dữ liệu lên Groq (Model: {self.model})...")
-        
         prompt = f"""
         Bạn là một chuyên gia tóm tắt văn bản tiếng Việt.
         Nhiệm vụ: Tóm tắt văn bản dưới đây một cách súc tích, khoảng {max_words} từ.

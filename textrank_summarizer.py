@@ -5,7 +5,6 @@ import networkx as nx
 
 class TextRankSummarizer:
     def __init__(self):
-        print("[HỆ THỐNG] Đang tải mô hình TextRank...")
         # Tải bộ tách câu của NLTK (Đã cập nhật thêm punkt_tab cho phiên bản mới)
         try:
             nltk.data.find('tokenizers/punkt')
@@ -15,8 +14,6 @@ class TextRankSummarizer:
             nltk.download('punkt_tab')
 
     def summarize(self, text, num_sentences=2):
-        print("[HỆ THỐNG] Đang tóm tắt bằng TextRank...")
-        
         # 1. Tách đoạn văn thành các câu riêng biệt
         sentences = sent_tokenize(text)
         
@@ -72,5 +69,4 @@ class TextRankSummarizer:
             
             return keywords
         except Exception as e:
-            print(f"[LỖI] Trích xuất từ khóa thất bại: {e}")
             return []
