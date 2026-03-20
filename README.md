@@ -62,3 +62,4 @@
 
 ---
 **Đồ án 2 - Hệ thống tóm tắt văn bản thông minh tích hợp AI Cloud & Database.**
+https://huggingface.co/spaces/thinh21/hethongtomtat
